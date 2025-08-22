@@ -1,67 +1,54 @@
 #!/usr/bin/env python3
 """
-Updated Sketal Bot - SuperGrok AI v1.3
-Обновленная версия Sketal с поддержкой VK API 5.199
+Sketal Bot Updated - SuperGrok AI v1.3
+Обновленный бот с поддержкой VK API 5.199
 
 Функции:
-- Современный VK API 5.199
-- Автоматические ответы в беседах
-- Обработка команд и сообщений
-- Плагинная система
-- Обработка ошибок
+- VK API 5.199
+- Автоответы в беседах
+- Команды управления
+- Защита от спама
+- Детальная статистика
 """
 
+import vk_api
 import asyncio
 import logging
 import time
 import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-
-# VK API imports
-import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
 
-# Local imports
-from handler.handler_controller import MessageHandler
+# Импорт конфигурации и контроллера
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from config import get_vk_config, get_bot_config
 from utils.vk_controller import VKController
-from config import get_vk_config, get_bot_config, get_security_config
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(asctime)s] %(levelname)-8s: %(message)s',
-    datefmt='%y.%m.%d %H:%M:%S'
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 class SketalBot:
     """Обновленный Sketal Bot с поддержкой VK API 5.199"""
     
-    def __init__(self, settings=None, logger=None, handler=None, loop=None):
+    def __init__(self, settings=None):
         """Инициализация бота"""
         self.settings = settings
-        self.logger = logger or logging.getLogger(__name__)
-        self.loop = loop or asyncio.get_event_loop()
+        self.logger = logger
         
         # Загружаем конфигурацию
         self.vk_config = get_vk_config()
         self.bot_config = get_bot_config()
-        self.security_config = get_security_config()
         
-        # Инициализация компонентов
-        self.logger.info("🚀 Инициализация Sketal Bot с SuperGrok AI v1.3")
-        
-        # VK контроллер
-        self.api = VKController(settings, logger=self.logger, loop=self.loop)
-        
-        # Обработчик сообщений
-        if handler:
-            self.handler = handler
-        else:
-            self.handler = MessageHandler(self, self.api, initiate_plugins=False)
-            self.handler.initiate_plugins()
+        # Инициализация VK контроллера
+        self.api = VKController(settings, logger=self.logger, loop=None)
         
         # Состояние бота
         self.running = False
@@ -247,8 +234,7 @@ class SketalBot:
             if cmd in self.conversation_handlers:
                 await self.conversation_handlers[cmd](user_id, peer_id, message_id, args)
             else:
-                # Передаем в плагинную систему
-                await self._handle_plugin_command(cmd, args, user_id, peer_id, message_id)
+                await self._send_error_message(peer_id, f"Команда /{cmd} не найдена. Используйте /help для справки.")
                 
         except Exception as e:
             self.logger.error(f"❌ Ошибка обработки команды: {e}")
@@ -260,10 +246,7 @@ class SketalBot:
             # Автоматические ответы
             if self.bot_config['conversation_settings']['auto_reply']:
                 await self._auto_reply(text, user_id, peer_id, message_id)
-            
-            # Передаем в плагинную систему
-            await self._handle_plugin_message(text, user_id, peer_id, message_id)
-            
+                
         except Exception as e:
             self.logger.error(f"❌ Ошибка обработки обычного сообщения: {e}")
     
@@ -287,28 +270,6 @@ class SketalBot:
                 
         except Exception as e:
             self.logger.error(f"❌ Ошибка автоматического ответа: {e}")
-    
-    async def _handle_plugin_command(self, cmd: str, args: str, user_id: int, peer_id: int, message_id: int):
-        """Обработка команды через плагинную систему"""
-        try:
-            # Передаем команду в обработчик
-            if hasattr(self.handler, 'handle_command'):
-                await self.handler.handle_command(cmd, args, user_id, peer_id, message_id)
-            else:
-                await self.api.send_message(peer_id, f"❓ Команда /{cmd} не найдена. Используйте /help для справки.")
-                
-        except Exception as e:
-            self.logger.error(f"❌ Ошибка обработки плагинной команды: {e}")
-    
-    async def _handle_plugin_message(self, text: str, user_id: int, peer_id: int, message_id: int):
-        """Обработка сообщения через плагинную систему"""
-        try:
-            # Передаем сообщение в обработчик
-            if hasattr(self.handler, 'handle_message'):
-                await self.handler.handle_message(text, user_id, peer_id, message_id)
-                
-        except Exception as e:
-            self.logger.error(f"❌ Ошибка обработки плагинного сообщения: {e}")
     
     async def _check_spam(self, user_id: int, peer_id: int) -> bool:
         """Проверка на спам"""
@@ -395,7 +356,7 @@ class SketalBot:
 📦 Плагинная система
 🛡️ Защита от спама
 📊 Детальная статистика
-            """
+        """
         
         await self.api.send_message(peer_id, info_text.strip())
     
@@ -467,6 +428,7 @@ async def main():
     # Простые настройки для демонстрации
     class SimpleSettings:
         DEBUG = True
+        PLUGINS = {}
     
     settings = SimpleSettings()
     
